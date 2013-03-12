@@ -40,9 +40,9 @@ define(function () {
     };
 
     Router.prototype.observe = function() {
-        var router = this;
-        var loc = window.location
-        var history = window.history;
+        var router = this,
+            loc = window.location,
+            history = window.history;
         router.supported = !!(history && history.pushState);
         if (router.supported) {
             window.onpopstate = function(evt) {
@@ -50,9 +50,9 @@ define(function () {
             };
         }
         window.document.addEventListener('click', function(evt) {
-            var el = event.target;
-            var href = el.getAttribute('href');
-            var bypass = el.getAttribute('data-bypass');
+            var el = event.target,
+                href = el.href;
+                bypass = el.getAttribute('data-bypass');
             if (el.tagName === 'A' && href) {
                 var root = loc.protocol + '//' + loc.host + '/';
                 if (href.slice(0, root.length) === root) {
