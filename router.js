@@ -1,7 +1,9 @@
 define(function () {
 
     function Router(options) {
-        this.routes = [];
+        options = typeof options === 'object' ? options : {};
+        this.routes = options.routes || [];
+        this.current_route = {};
     }
 
     Router.prototype.add_route = function(route) {
@@ -21,19 +23,16 @@ define(function () {
             if (found) { return false; }
             if (i.route && i.route.test(uri.path)) {
                 found = true;
-                route = i;
+                route = copy_obj(i);
             }
         });
         if (route) {
             route.params = uri.params;
-            var matches = uri.path.match(route.route);
-            if (matches && matches.length > 1 && route.matches.length) {
-                var m, ml;
-                for (m = 1, ml = matches.length; m < ml; m++) {
-                    if (matches[m]) {
-                        route.params[ route.matches[m - 1] ] = decodeURIComponent(matches[m]);
-                    }
-                }
+            var matches = uri.path.match(route.route).slice(1);
+            if (matches && matches.length && route.matches.length) {
+                matches.forEach(function(i, idx) {
+                    route.params[ route.matches[idx] ] = decodeURIComponent(i);
+                });
             }
         }
         return route;
@@ -49,7 +48,7 @@ define(function () {
                 router.run(document.location.href);
             };
         }
-        window.document.addEventListener('click', function(evt) {
+        document.addEventListener('click', function(evt) {
             var el = event.target,
                 href = el.href;
                 bypass = el.getAttribute('data-bypass');
@@ -73,21 +72,51 @@ define(function () {
 
     Router.prototype.run = function(url) {
         var route = this.find_route(url);
-        if (route) {
+        if (route && (route.route !== this.current_route.route || !compare_obj(route.params, this.current_route.params))) {
             route.callback(route.params, route);
+            this.current_route = route;
         }
     };
 
+    function compare_obj(a, b) {
+        for (var i in a) {
+            if (a[i] !== b[i]) {
+                return false;
+            }
+        }
+        for (var i in b) {
+            if (a[i] !== b[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function copy_obj(obj) {
+        if (typeof obj === 'undefined') {
+            return obj;
+        }
+        var c = {}, i;
+        for (i in obj) {
+            if (obj.hasOwnProperty(i)) {
+                c[i] = obj[i];
+            }
+        }
+        return c;
+    }
+
+    var parse_uri_settings = {
+        uri_parser: /^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/)?((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/,
+        query_parser: /(?:^|&)([^&=]*)=?([^&]*)/g,
+        key: ['source','protocol','authority','userInfo','user','password','host','port','relative','path','directory','file','query','anchor']
+    };
+
     function parse_uri(str) {
-        var o = {
-                uri_parser: /^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/)?((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/,
-                query_parser: /(?:^|&)([^&=]*)=?([^&]*)/g,
-                key: ["source","protocol","authority","userInfo","user","password","host","port","relative","path","directory","file","query","anchor"]
-            },
+        var o = parse_uri_settings,
             m = o.uri_parser.exec(str),
-            uri = { params: {}},
+            uri = { params: {} },
             i = 14;
-        while (i--) { uri[o.key[i]] = m[i] || ""; }
+        while (i--) { uri[o.key[i]] = m[i] || ''; }
         uri[o.key[12]].replace(o.query_parser, function (a, b, c) {
             if (b) { uri.params[b] = decodeURIComponent(c); }
         });
