@@ -1,4 +1,4 @@
-(function(window, undefined){
+(function(global, undefined){
 
 "use strict";
 
@@ -7,21 +7,43 @@ function Router(options) {
     this.version = '0.8';
     this.routes = options.routes || [];
     this.current_route = {};
+    this.parse_uri_settings = {
+        uri_parser: /^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/)?((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/,
+        query_parser: /(?:^|&)([^&=]*)=?([^&]*)/g,
+        smart_uri_parser: /(:\w+)/g,
+        key: ['source','protocol','authority','userInfo','user','password','host','port','relative','path','directory','file','query','anchor']
+    };
 }
 
 Router.prototype = {
 
     add_route: function(route) {
-        if (Object.prototype.toString.call(route) === '[object Array]') {
-            this.routes = this.routes.concat(route);
+        var router = this;
+        if (is_array(route)) {
+            route.forEach(function(i) { router.routes.push(router.compile_route(i)); });
         }
         else {
-            this.routes.push(route);
+            router.routes.push(router.compile_route(route));
         }
     },
 
+    compile_route: function(route) {
+        if (typeof route.route === 'string') {
+            if (route.route.indexOf(':') !== -1) {
+                var matches = route.route.match(this.parse_uri_settings.smart_uri_parser);
+                route.matches = [];
+                matches.forEach(function(match) {
+                    route.route = route.route.replace(match, '(.+)?');
+                    route.matches.push(match.slice(1));
+                });
+            }
+            route.route = new RegExp('^' + route.route + '$');
+        }
+        return route;
+    },
+
     find_route: function(url) {
-        var uri = parse_uri(url),
+        var uri = this.parse_uri(url),
             route = null,
             found = false;
         this.routes.forEach(function(i, idx) {
@@ -45,15 +67,15 @@ Router.prototype = {
 
     observe: function() {
         var router = this,
-            loc = window.location,
-            history = window.history;
+            loc = global.location,
+            history = global.history;
         router.supported = !!(history && history.pushState);
         if (router.supported) {
-            window.onpopstate = function(evt) {
-                router.run(window.location.href);
+            global.onpopstate = function(evt) {
+                router.run(global.location.href);
             };
         }
-        window.document.addEventListener('click', function(evt) {
+        global.document.addEventListener('click', function(evt) {
             var el = evt.target,
                 href = el.href,
                 bypass = el.getAttribute('data-bypass');
@@ -67,7 +89,7 @@ Router.prototype = {
                         if (router.supported) {
                             evt.preventDefault();
                             router.run(href);
-                            history.pushState(parse_uri(href), null, href);
+                            history.pushState(router.parse_uri(href), null, href);
                         }
                     }
                 }
@@ -75,16 +97,31 @@ Router.prototype = {
         });
     },
 
-    run: function(url) {
+    run: function(url, force) {
         var route = this.find_route(url);
         if (route) {
             route.callback(route.params, route);
             this.current_route = route;
         }
         else {
-            window.location.href = url;
+            if (global.location.href !== url || force === true) {
+                global.location.href = url;
+            }
         }
+    },
+
+    parse_uri: function(str) {
+        var o = this.parse_uri_settings,
+            m = o.uri_parser.exec(str),
+            uri = { params: {} },
+            i = 14;
+        while (i--) { uri[o.key[i]] = m[i] || ''; }
+        uri[o.key[12]].replace(o.query_parser, function (a, b, c) {
+            if (b) { uri.params[b] = decodeURIComponent(c); }
+        });
+        return uri;
     }
+
 };
 
 function copy_obj(obj) {
@@ -100,26 +137,14 @@ function copy_obj(obj) {
     return c;
 }
 
-var parse_uri_settings = {
-    uri_parser: /^(?:(?![^:@]+:[^:@\/]*@)([^:\/?#.]+):)?(?:\/\/)?((?:(([^:@]*)(?::([^:@]*))?)?@)?([^:\/?#]*)(?::(\d*))?)(((\/(?:[^?#](?![^?#\/]*\.[^?#\/.]+(?:[?#]|$)))*\/?)?([^?#\/]*))(?:\?([^#]*))?(?:#(.*))?)/,
-    query_parser: /(?:^|&)([^&=]*)=?([^&]*)/g,
-    key: ['source','protocol','authority','userInfo','user','password','host','port','relative','path','directory','file','query','anchor']
-};
-
-function parse_uri(str) {
-    var o = parse_uri_settings,
-        m = o.uri_parser.exec(str),
-        uri = { params: {} },
-        i = 14;
-    while (i--) { uri[o.key[i]] = m[i] || ''; }
-    uri[o.key[12]].replace(o.query_parser, function (a, b, c) {
-        if (b) { uri.params[b] = decodeURIComponent(c); }
-    });
-    return uri;
+function is_array(obj) {
+    return Object.prototype.toString.call(obj) === '[object Array]';
 }
 
+
+var define, module;
 if (typeof define !== 'undefined' && define.amd) { define(function() { return Router; }); }
 else if (typeof module !== 'undefined' && module.exports) { module.exports = Router; }
-else { window.Router = Router; }
+else { global.Router = Router; }
 
-})(window);
+})(global);
